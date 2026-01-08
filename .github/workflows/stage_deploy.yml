@@ -1,0 +1,137 @@
+name: Deploy LibreChat to EC2
+
+on:
+  push:
+    branches: [stage]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          cat << 'EOF' > .env
+          #==================================================#
+          #               Server Configuration               #
+          #==================================================#
+          HOST=0.0.0.0
+          PORT=3080
+          
+          MONGO_URI=mongodb://mongodb:27017/LibreChat
+          
+          DOMAIN_CLIENT=http://${{ vars.EC2_HOST }}:3080
+          DOMAIN_SERVER=http://${{ vars.EC2_HOST }}:3080
+          
+          NO_INDEX=true
+          TRUST_PROXY=1
+          
+          #=============#
+          # Permissions #
+          #=============#
+          UID=1000
+          GID=1000
+          
+          #===============#
+          # Debug Logging #
+          #===============#
+          DEBUG_LOGGING=true
+          DEBUG_CONSOLE=false
+          
+          #==================================================#
+          #                    Security                      #
+          #==================================================#
+          CREDS_KEY=${{ secrets.CREDS_KEY }}
+          CREDS_IV=${{ secrets.CREDS_IV }}
+          
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+          
+          SESSION_EXPIRY=1000 * 60 * 15
+          REFRESH_TOKEN_EXPIRY=(1000 * 60 * 60 * 24) * 7
+          
+          #==================================================#
+          #                   MeiliSearch                    #
+          #==================================================#
+          MEILI_MASTER_KEY=${{ secrets.MEILI_MASTER_KEY }}
+          MEILI_HOST=http://meilisearch:7700
+          
+          #==================================================#
+          #                  RAG API Config                  #
+          #==================================================#
+          RAG_PORT=8000
+          RAG_API_URL=http://rag_api:8000
+          
+          #==================================================#
+          #              AI Provider API Keys                #
+          #==================================================#
+          # Uncomment and set the providers you want to use
+          # OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          # ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          # GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+          
+          # Allow users to provide their own keys
+          OPENAI_API_KEY=user_provided
+          ANTHROPIC_API_KEY=user_provided
+          GOOGLE_API_KEY=user_provided
+          
+          #==================================================#
+          #               User Registration                  #
+          #==================================================#
+          ALLOW_REGISTRATION=true
+          ALLOW_SOCIAL_LOGIN=false
+          ALLOW_SOCIAL_REGISTRATION=false
+          EOF
+
+      - name: Copy files to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.ec2.yml,.env"
+          target: /opt/librechat
+          overwrite: true
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /opt/librechat
+            
+            # Rename compose file to standard name
+            mv -f docker-compose.ec2.yml docker-compose.yml 2>/dev/null || true
+            
+            # Create required directories with proper ownership
+            mkdir -p images uploads logs data-node meili_data_v1.12
+            
+            # Stop existing containers gracefully
+            docker compose down --remove-orphans 2>/dev/null || true
+            
+            # Pull latest images
+            docker compose pull
+            
+            # Start containers
+            docker compose up -d
+            
+            # Show status
+            echo "=== Container Status ==="
+            docker compose ps
+            
+            # Wait for services to initialize
+            sleep 15
+            
+            # Health check
+            echo "=== Health Check ==="
+            curl -s -o /dev/null -w "LibreChat HTTP Status: %{http_code}\n" http://localhost:3080/api/health || echo "Health check pending..."
+            
+            echo "=== Recent Logs ==="
+            docker compose logs --tail=30
+
