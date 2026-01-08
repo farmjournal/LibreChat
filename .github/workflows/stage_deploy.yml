@@ -3,7 +3,12 @@ name: Deploy LibreChat
 on:
   push:
     branches: [stage]
-  workflow_dispatch:
+    paths-ignore:  # Don't deploy directly if code changes (build workflow handles that)
+      - 'api/**'
+      - 'client/**'
+      - 'packages/**'
+      - 'Dockerfile'
+  workflow_dispatch:  # Manual trigger or called by build workflow
 
 jobs:
   deploy:
@@ -46,8 +51,6 @@ jobs:
           
           ALLOW_REGISTRATION=true
           ALLOW_SOCIAL_LOGIN=false
-          
-          GITHUB_REPO=${{ github.repository }}
           EOF
 
       - name: Copy files to EC2

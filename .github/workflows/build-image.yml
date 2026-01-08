@@ -10,7 +10,7 @@ on:
       - 'Dockerfile'
       - 'package.json'
       - 'package-lock.json'
-  workflow_dispatch:  # Manual trigger if needed
+  workflow_dispatch:  # Manual trigger
 
 env:
   REGISTRY: ghcr.io
@@ -52,3 +52,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Trigger deploy after successful build
+  trigger-deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deploy workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'stage_deploy.yml',
+              ref: 'stage'
+            })
