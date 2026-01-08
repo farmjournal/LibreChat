@@ -95,7 +95,7 @@ const setup = ({
       isFetching={useGetStartupConfigReturnValue.isFetching}
       error={null}
       startupConfigError={null}
-      header={'Welcome back'}
+      header={'Wilmer/LibreChat'}
       pathname="login"
     >
       <Login />
