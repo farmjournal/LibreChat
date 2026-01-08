@@ -1,9 +1,9 @@
-name: Deploy LibreChat to EC2
+name: Deploy LibreChat
 
 on:
   push:
     branches: [stage]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -16,10 +16,7 @@ jobs:
 
       - name: Create .env file
         run: |
-          cat << 'EOF' > .env
-          #==================================================#
-          #               Server Configuration               #
-          #==================================================#
+          cat << EOF > .env
           HOST=0.0.0.0
           PORT=3080
           
@@ -31,21 +28,6 @@ jobs:
           NO_INDEX=true
           TRUST_PROXY=1
           
-          #=============#
-          # Permissions #
-          #=============#
-          UID=1000
-          GID=1000
-          
-          #===============#
-          # Debug Logging #
-          #===============#
-          DEBUG_LOGGING=true
-          DEBUG_CONSOLE=false
-          
-          #==================================================#
-          #                    Security                      #
-          #==================================================#
           CREDS_KEY=${{ secrets.CREDS_KEY }}
           CREDS_IV=${{ secrets.CREDS_IV }}
           
@@ -55,31 +37,17 @@ jobs:
           SESSION_EXPIRY=1000 * 60 * 15
           REFRESH_TOKEN_EXPIRY=(1000 * 60 * 60 * 24) * 7
           
-          #==================================================#
-          #                   MeiliSearch                    #
-          #==================================================#
           MEILI_MASTER_KEY=${{ secrets.MEILI_MASTER_KEY }}
           MEILI_HOST=http://meilisearch:7700
           
-          #==================================================#
-          #              AI Provider API Keys                #
-          #==================================================#
-          # Uncomment and set the providers you want to use
-          # OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-          # ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-          # GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
-          
-          # Allow users to provide their own keys
           OPENAI_API_KEY=user_provided
           ANTHROPIC_API_KEY=user_provided
           GOOGLE_API_KEY=user_provided
           
-          #==================================================#
-          #               User Registration                  #
-          #==================================================#
           ALLOW_REGISTRATION=true
           ALLOW_SOCIAL_LOGIN=false
-          ALLOW_SOCIAL_REGISTRATION=false
+          
+          GITHUB_REPO=${{ github.repository }}
           EOF
 
       - name: Copy files to EC2
@@ -88,7 +56,7 @@ jobs:
           host: ${{ vars.EC2_HOST }}
           username: ${{ vars.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "docker-compose.ec2.yml,.env"
+          source: "docker-compose.ec2.yml,.env,librechat.yaml"
           target: /opt/librechat
           overwrite: true
 
@@ -101,32 +69,26 @@ jobs:
           script: |
             cd /opt/librechat
             
-            # Rename compose file to standard name
+            # Rename compose file
             mv -f docker-compose.ec2.yml docker-compose.yml 2>/dev/null || true
             
-            # Create required directories with proper ownership
+            # Create required directories
             mkdir -p images uploads logs data-node meili_data_v1.12
             
-            # Stop existing containers gracefully
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GH_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Stop existing containers
             docker compose down --remove-orphans 2>/dev/null || true
             
-            # Pull latest images
+            # Pull latest image and start
             docker compose pull
-            
-            # Start containers
             docker compose up -d
             
-            # Show status
             echo "=== Container Status ==="
             docker compose ps
             
-            # Wait for services to initialize
-            sleep 15
+            sleep 10
             
-            # Health check
             echo "=== Health Check ==="
-            curl -s -o /dev/null -w "LibreChat HTTP Status: %{http_code}\n" http://localhost:3080/api/health || echo "Health check pending..."
-            
-            echo "=== Recent Logs ==="
-            docker compose logs --tail=30
-
+            curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:3080/api/health || echo "Pending..."
