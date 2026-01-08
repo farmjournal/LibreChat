@@ -5,7 +5,7 @@
 services:
   api:
     container_name: LibreChat
-    image: ghcr.io/${GITHUB_REPO}:latest
+    image: ghcr.io/farmjournal/librechat:latest
     ports:
       - "3080:3080"
     depends_on:
