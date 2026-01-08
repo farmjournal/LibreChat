@@ -25,8 +25,8 @@ jobs:
           
           MONGO_URI=mongodb://mongodb:27017/LibreChat
           
-          DOMAIN_CLIENT=http://${{ vars.EC2_HOST }}:3080
-          DOMAIN_SERVER=http://${{ vars.EC2_HOST }}:3080
+          DOMAIN_CLIENT=http://${{ vars.EC2_HOST }}
+          DOMAIN_SERVER=http://${{ vars.EC2_HOST }}
           
           NO_INDEX=true
           TRUST_PROXY=1
